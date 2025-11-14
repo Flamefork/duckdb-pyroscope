@@ -13,6 +13,21 @@ require pyroscope
 
 require icu
 
+query I
+SELECT COUNT(*) FROM duckdb_functions() WHERE function_name = 'trace_start';
+----
+1
+
+query I
+SELECT COUNT(*) FROM duckdb_functions() WHERE function_name = 'trace_stop';
+----
+1
+
+query I
+SELECT * FROM trace_stop();
+----
+No profiling session running
+
 # Confirm the extension works
 #query I
 #SELECT * from rusty_quack('Sam');
