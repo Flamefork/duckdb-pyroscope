@@ -11,16 +11,16 @@ use duckdb::{
 };
 use duckdb_loadable_macros::duckdb_entrypoint_c_api;
 use libduckdb_sys as ffi;
-use std::{
-    error::Error,
-    ffi::CString,
-    sync::Arc,
-    sync::Mutex,
-    sync::atomic::{AtomicBool, Ordering},
-};
 use pyroscope::pyroscope::PyroscopeAgentRunning;
 use pyroscope::PyroscopeAgent;
 use pyroscope_pprofrs::{pprof_backend, PprofConfig};
+use std::{
+    error::Error,
+    ffi::CString,
+    sync::atomic::{AtomicBool, Ordering},
+    sync::Arc,
+    sync::Mutex,
+};
 
 // Store just the running agent
 lazy_static::lazy_static! {
@@ -52,20 +52,25 @@ impl VTab for TraceStartVTab {
 
     fn init(_: &InitInfo) -> Result<Self::InitData, Box<dyn Error>> {
         Ok(TraceStartInitData {
-            done: AtomicBool::new(false)
+            done: AtomicBool::new(false),
         })
     }
 
-    fn func(func: &TableFunctionInfo<Self>, output: &mut DataChunkHandle) -> Result<(), Box<dyn Error>> {
+    fn func(
+        func: &TableFunctionInfo<Self>,
+        output: &mut DataChunkHandle,
+    ) -> Result<(), Box<dyn Error>> {
         let init_data = func.get_init_data();
         let bind_data = func.get_bind_data();
-        
+
         if init_data.done.swap(true, Ordering::Relaxed) {
             output.set_len(0);
             return Ok(());
         }
-        
-        let mut agent_lock = PYROSCOPE_AGENT.lock().map_err(|e| format!("Failed to acquire lock: {}", e))?;
+
+        let mut agent_lock = PYROSCOPE_AGENT
+            .lock()
+            .map_err(|e| format!("Failed to acquire lock: {}", e))?;
         if agent_lock.is_some() {
             let vector = output.flat_vector(0);
             vector.insert(0, CString::new("Profiling already running")?);
@@ -79,15 +84,16 @@ impl VTab for TraceStartVTab {
             .build()
             .map_err(|e| format!("Failed to create Pyroscope agent: {}", e))?;
 
-        let running_agent = agent.start()
+        let running_agent = agent
+            .start()
             .map_err(|e| format!("Failed to start Pyroscope agent: {}", e))?;
-        
+
         *agent_lock = Some(running_agent);
-        
+
         let vector = output.flat_vector(0);
         vector.insert(0, CString::new("Profiling started with Pyroscope")?);
         output.set_len(1);
-        
+
         Ok(())
     }
 
@@ -118,23 +124,33 @@ impl VTab for TraceStopVTab {
 
     fn init(_: &InitInfo) -> Result<Self::InitData, Box<dyn Error>> {
         Ok(TraceStopInitData {
-            done: AtomicBool::new(false)
+            done: AtomicBool::new(false),
         })
     }
 
-    fn func(func: &TableFunctionInfo<Self>, output: &mut DataChunkHandle) -> Result<(), Box<dyn Error>> {
+    fn func(
+        func: &TableFunctionInfo<Self>,
+        output: &mut DataChunkHandle,
+    ) -> Result<(), Box<dyn Error>> {
         let init_data = func.get_init_data();
-        
+
         if init_data.done.swap(true, Ordering::Relaxed) {
             output.set_len(0);
             return Ok(());
         }
-        
-        let mut agent_lock = PYROSCOPE_AGENT.lock().map_err(|e| format!("Failed to acquire lock: {}", e))?;
-        
-        if let Some(running_agent) = agent_lock.take() {
-            running_agent.shutdown();
-            
+
+        let mut agent_lock = PYROSCOPE_AGENT
+            .lock()
+            .map_err(|e| format!("Failed to acquire lock: {}", e))?;
+        let running_agent = agent_lock.take();
+        drop(agent_lock);
+
+        if let Some(running_agent) = running_agent {
+            let ready_agent = running_agent
+                .stop()
+                .map_err(|e| format!("Failed to stop Pyroscope agent: {}", e))?;
+            ready_agent.shutdown();
+
             let vector = output.flat_vector(0);
             vector.insert(0, CString::new("Profiling stopped successfully")?);
             output.set_len(1);
@@ -143,7 +159,7 @@ impl VTab for TraceStopVTab {
             vector.insert(0, CString::new("No profiling session running")?);
             output.set_len(1);
         }
-        
+
         Ok(())
     }
 
