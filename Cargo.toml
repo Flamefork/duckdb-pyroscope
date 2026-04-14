@@ -20,7 +20,7 @@ path = "src/wasm_lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-duckdb = { version = "1.10501.0", features = ["loadable-extension"] }
+duckdb = { version = "1.10502.0", features = ["loadable-extension"] }
 lazy_static = "1.4"
 pyroscope = "0.5.4"
 pyroscope_pprofrs = "0.2"
